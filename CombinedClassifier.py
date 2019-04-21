@@ -6,9 +6,21 @@
 #           Plugin Linear Discriminant Function (LDF)
 #
 # Note: this code is available on GitHub
-#   https://github.com/jatlast/CombinedClassifier.git
+#   https://github.com/jatlast/Classifier.git
 #
 ########################################################################
+
+# Import local libraries...
+import sys
+sys.path.append('C:/Users/jatlast/Google Drive/Code/AI/Classifier/KNN')
+import KNN
+sys.path.append('C:/Users/jatlast/Google Drive/Code/AI/Classifier/LDF')
+import LDF
+# import importlib
+# moduleKNN = input('KNN.py:')
+# importlib.import_module(moduleKNN)
+# moduleLDF = input('LDF.py')
+# importlib.import_module(moduleLDF)
 
 # required for reading csv files to get just the header
 import csv
@@ -27,14 +39,11 @@ parser.add_argument("-tn", "--targetname", default="target", help="the name of t
 parser.add_argument("-v", "--verbosity", type=int, choices=[0, 1, 2, 3], default=0, help="increase output verbosity")
 args = parser.parse_args()
 
-# debug info
-if args.verbosity > 0:
-    print(f"neighbors: {args.kneighbors} = {len(neighbors_dict)} :len(neighbors_dict)")
-
 # variables that are useful to pass around
 variables_dict = {
     'training_file' : args.filetrain
     , 'testing_file' : args.filetest
+    , 'verbosity' : args.verbosity
     # UCI Heart Disease specific - attribut universally ignored
     #   Note: if they exist they are represented by the pre-processing added "smoke" attribute
     , 'ignore_columns' : ['cigs', 'years']
@@ -84,6 +93,13 @@ if args.targetname == 'num':
     variables_dict['ignore_columns'].append('target')
 elif args.targetname == 'target':
     variables_dict['ignore_columns'].append('num')
+
+variables_dict['neighbors_dict'] = {}
+KNN.InitNeighborsDict(variables_dict['neighbors_dict'], args.kneighbors)
+
+# debug info
+if args.verbosity > 0:
+    print(f"neighbors: {args.kneighbors} = {len(variables_dict['neighbors_dict'])} :len(neighbors_dict)")
 
 # Read the command line specified CSV data files
 def ReadFileDataIntoDictOfLists(sFileName, dDictOfLists):
@@ -155,7 +171,7 @@ def AddSharedAttributesToVarDict(dTrainingData, dTestingData, dVariables):
                     # append matching header name to the list of shared attributes
                     if i == j:
                         dVariables['shared_attributes'].append(i)
-        
+
 # create and return a vector of only the shared attributes (excludes target attributes)
 def GetVectorOfOnlySharedAttributes(dDictOfLists, sIndex, dVariables):
     header_vec = [] # for debugging only
@@ -191,7 +207,6 @@ def GetVectorOfOnlySharedAttributes(dDictOfLists, sIndex, dVariables):
         print(f"shared {dDictOfLists['type']}:{header_vec}")
     
     return return_vec
-
 
 # sum and track confusion matrix by sPrefix (i.e., knn, ild, com) and store in the variables dictionary
 def TrackConfusionMatrixSums(sTestType, sPredictionType, sPrefix, dVariables):
@@ -324,6 +339,14 @@ if args.verbosity > 0:
     # vector attribute includes all shared attributes except the "target" attribute
     print(f"vector attributes:{GetVectorOfOnlySharedAttributes(testing_dict, 0, variables_dict)}")
 
+#   -- LDF specific --
+# add the target type means to the variables dictionary for later use
+LDF.AddTargetTypeMeansToVarDict(training_dict, variables_dict)
+
+#   -- LDF specific --
+# calculate the inner (dot) products of the different target type means
+LDF.AddMeanSqCalcsToVarDic(variables_dict)
+
 # debugging info
 if args.verbosity > 1:
     for key in variables_dict['target_types']:
@@ -351,13 +374,13 @@ for i in range(1, len(testing_dict) - 1):
     test_vec = GetVectorOfOnlySharedAttributes(testing_dict, i, variables_dict)
 
     # set the k-nearest neighbors in the neighbors dict
-    PopulateNearestNeighborsDicOfIndexes(neighbors_dict, training_dict, test_vec, variables_dict)
+    KNN.PopulateNearestNeighborsDicOfIndexes(training_dict, test_vec, variables_dict)
 
     # calculate and set the KNN predicted target and confidence in the variables dict
-    AddKNNMajorityTypeToVarDict(neighbors_dict, variables_dict)
+    KNN.AddKNNMajorityTypeToVarDict(variables_dict)
 
     # calculate and set the LDF predicted target and confidence in the variables dict
-    AddCalculatesOfPluginLDFToVarDic(test_vec, variables_dict)
+    LDF.AddCalculatesOfPluginLDFToVarDic(test_vec, variables_dict)
 
     # ----- Store the Confusion Matrix running counts -----
     # track KNN confusion matrix running totals
@@ -393,7 +416,7 @@ for i in range(1, len(testing_dict) - 1):
 
     # reset kneighbors_dict
     for i in range(1, args.kneighbors + 1):
-        neighbors_dict[i] = {'index' : -1, 'distance' : 1000, 'type' : ''}
+        variables_dict['neighbors_dict'][i] = {'index' : -1, 'distance' : 1000, 'type' : ''}
 
 # print the three confusion matrices
 PrintConfusionMatrix('knn', variables_dict)
